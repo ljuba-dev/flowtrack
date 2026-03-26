@@ -51,6 +51,10 @@ This section will be restored once the extension is released.
 ### Interactive Browser
 The standalone server provides a rich web interface to explore your flows, with auto-reloading and Mermaid.js visualization.
 
+- `Flows` page: visual flow diagrams with steps, helpers, and linked tests.
+- `Helpers` page: a global catalog of helper functions and where they are used.
+- `Tests` page: a global catalog of `@FlowTest` entries grouped by the flow they belong to.
+
 ![Flow Details View](https://github.com/ljuba-dev/flowtrack/raw/main/assets/flow-details.png)
 
 ### Multi-File Flows
@@ -126,6 +130,58 @@ import { FlowHelper } from '@flowtrack-ljuba/core';
 @FlowHelper()
 function sanitizeData(data: any) {
     // ... logic
+}
+```
+
+Use `@FlowTest` to attach test coverage to a specific flow. You can optionally bind the test to a concrete step:
+
+```typescript
+import { FlowTest } from '@flowtrack-ljuba/core';
+
+/**
+ * Verifies checkout happy-path completion.
+ */
+@FlowTest('OrderProcessing', {
+    name: 'Order processing e2e',
+    type: 'E2E',
+    framework: 'Playwright',
+    tags: ['smoke', 'checkout']
+})
+async function completeCheckoutTest() {
+    // ... test logic
+}
+```
+
+`@FlowTest` arguments:
+- positional `flow` (required): flow name where this test belongs.
+- options object (optional):
+  - `name`: test label shown in the diagram/sidebar.
+  - `description`, `type`, `framework`, plus optional metadata like `id` and `tags`.
+  - `step`: optional step binding (number or step name). If omitted, the test is shown as a flow-level test and is not connected to a specific step node.
+
+Additional examples:
+
+```typescript
+@FlowTest('OrderProcessing', {
+    name: 'Validate Payment unit test',
+    type: 'Unit',
+    framework: 'Jest',
+    step: 1,
+    tags: ['unit', 'fast']
+})
+function validatePaymentUnitTest() {
+    // Jest unit test body
+}
+
+@FlowTest('OrderProcessing', {
+    name: 'Create Shipment B2B',
+    type: 'B2B',
+    framework: 'Jest',
+    description: 'Validates partner fulfillment integration.',
+    tags: ['integration', 'partner']
+})
+function createShipmentB2BTest() {
+    // Backend-to-backend integration test body
 }
 ```
 

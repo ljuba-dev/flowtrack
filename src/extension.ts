@@ -22,7 +22,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         if (targetUri) {
-            let allFlows: FlowMap = { flows: {}, helpers: {} };
+            let allFlows: FlowMap = { flows: {}, helpers: {}, tests: {} };
 
             // Find all files in workspace to aggregate all flows
             const files = await vscode.workspace.findFiles('**/*.{ts,tsx,js,jsx}');
@@ -43,6 +43,14 @@ export function activate(context: vscode.ExtensionContext) {
                         // Merge helpers
                         for (const name in fileFlows.helpers) {
                             allFlows.helpers[name] = fileFlows.helpers[name];
+                        }
+                        // Merge tests
+                        if (fileFlows.tests) {
+                            for (const flowName in fileFlows.tests) {
+                                if (!allFlows.tests) allFlows.tests = {};
+                                if (!allFlows.tests[flowName]) allFlows.tests[flowName] = [];
+                                allFlows.tests[flowName].push(...fileFlows.tests[flowName]);
+                            }
                         }
                     }
                 } catch (e) {
@@ -77,11 +85,14 @@ export function activate(context: vscode.ExtensionContext) {
             const isDirectory = stats.type === vscode.FileType.Directory;
             const targetFolder = isDirectory ? targetUri.toString() : targetUri.toString().substring(0, targetUri.toString().lastIndexOf('/'));
             
-            const filteredFlows: FlowMap = { flows: {}, helpers: allFlows.helpers };
+            const filteredFlows: FlowMap = { flows: {}, helpers: allFlows.helpers, tests: {} };
             for (const title in allFlows.flows) {
                 const hasStepInFolder = allFlows.flows[title].some(s => s.uri && s.uri.startsWith(targetFolder));
                 if (hasStepInFolder) {
                     filteredFlows.flows[title] = allFlows.flows[title];
+                    if (allFlows.tests?.[title]) {
+                        filteredFlows.tests![title] = allFlows.tests[title];
+                    }
                 }
             }
 
@@ -217,11 +228,51 @@ class FlowPanel {
                 command: 'showAll'
             });
         };
+        window.printFlow = (flowId) => {
+            const flowContainer = document.getElementById(flowId);
+            if (!flowContainer) return;
+
+            const flowRoot = flowContainer.closest('.flow-container');
+            if (!flowRoot) return;
+
+            const flowTitle = flowRoot.querySelector('.header h2')?.textContent || 'Flow Diagram';
+            const diagramSvg = flowRoot.querySelector('.flow-diagram-wrapper .mermaid svg');
+            const sidebar = flowRoot.querySelector('.flow-sidebar');
+            if (!diagramSvg || !sidebar) return;
+
+            let printRoot = document.getElementById('print-flow-root');
+            if (!printRoot) {
+                printRoot = document.createElement('div');
+                printRoot.id = 'print-flow-root';
+                printRoot.className = 'print-flow-root';
+                document.body.appendChild(printRoot);
+            }
+
+            printRoot.innerHTML = '<section class="print-page print-diagram-page">' +
+                '<h2>' + flowTitle + '</h2>' +
+                '<div class="print-diagram-content">' + diagramSvg.outerHTML + '</div>' +
+                '</section>' +
+                '<section class="print-page print-sidebar-page">' +
+                '<h2>Flow Details</h2>' +
+                '<div class="print-sidebar-content">' + sidebar.innerHTML + '</div>' +
+                '</section>';
+
+            document.body.classList.add('printing-flow');
+            const cleanupPrintState = () => {
+                document.body.classList.remove('printing-flow');
+                window.removeEventListener('afterprint', cleanupPrintState);
+            };
+
+            window.addEventListener('afterprint', cleanupPrintState);
+            window.print();
+            setTimeout(cleanupPrintState, 1000);
+        };
     </script>
     <style>
         body { font-family: sans-serif; padding: 20px; }
         .flow-container { margin-bottom: 40px; border-bottom: 1px solid #ccc; padding-bottom: 20px; position: relative; }
         .header { display: flex; justify-content: space-between; align-items: center; }
+        .header-actions { display: flex; align-items: center; gap: 8px; }
         h2 { color: #007acc; margin: 10px 0; }
         .file-info { font-size: 0.8em; color: #666; display: block; }
         .btn { 
@@ -247,12 +298,61 @@ class FlowPanel {
             gap: 5px;
             border: 1px solid #ddd;
         }
+        .floating-controls.dragging {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+        .drag-handle {
+            cursor: move;
+            user-select: none;
+            text-align: center;
+            color: #fff;
+            font-size: 0.75em;
+            letter-spacing: 0.3px;
+            line-height: 1.2;
+            font-weight: 600;
+            background: #007acc;
+            border-radius: 6px;
+            padding: 5px 8px;
+            text-transform: uppercase;
+        }
         .flow-layout { display: flex; gap: 20px; }
-        .flow-sidebar { width: 300px; flex-shrink: 0; border-right: 1px solid #eee; padding-right: 20px; }
+        .flow-sidebar {
+            width: 300px;
+            flex-shrink: 0;
+            border-right: 1px solid #eee;
+            padding-right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            min-height: 0;
+        }
         .flow-diagram-wrapper { flex-grow: 1; position: relative; overflow: auto; border: 1px solid #eee; padding: 20px; min-height: 400px; }
-        section { margin-bottom: 20px; }
+        section { margin-bottom: 0; }
         h3 { color: #555; font-size: 1.1em; border-bottom: 1px solid #eee; padding-bottom: 5px; margin-top: 0; }
         ul { padding-left: 20px; margin: 5px 0; }
+        .scrollable-section {
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            max-height: 220px;
+        }
+        .scrollable-section-content {
+            overflow: auto;
+            min-height: 0;
+            padding-right: 6px;
+        }
+        .scroll-indicator {
+            height: 16px;
+            line-height: 16px;
+            text-align: center;
+            font-size: 11px;
+            color: #007acc;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+        }
+        .scrollable-section.can-scroll-up .scroll-indicator-top { opacity: 1; }
+        .scrollable-section.can-scroll-down .scroll-indicator-bottom { opacity: 1; }
         .file-info { font-size: 0.8em; color: #666; }
         .step-description { font-size: 0.85em; background: #f9f9f9; padding: 5px; margin-top: 5px; border-radius: 3px; }
         .step-description p { margin: 5px 0; }
@@ -276,6 +376,50 @@ class FlowPanel {
         .legend-box { width: 15px; height: 15px; margin-right: 8px; border: 1px solid #333; }
         .flow-step { background-color: white; border-radius: 2px; }
         .helper-step { background-color: #f9f; border-radius: 50%; }
+        .test-step { background-color: #e8f5e9; border-color: #2e7d32; border-radius: 10px; }
+        .print-flow-root { display: none; }
+        @media print {
+            body.printing-flow > *:not(.print-flow-root) { display: none !important; }
+            body.printing-flow .print-flow-root { display: block !important; }
+            body.printing-flow .print-page {
+                page-break-after: always;
+                break-after: page;
+                padding: 18mm 14mm;
+            }
+            body.printing-flow .print-page:last-child {
+                page-break-after: auto;
+                break-after: auto;
+            }
+            body.printing-flow .print-page h2 {
+                margin-top: 0;
+                margin-bottom: 14px;
+                color: #000;
+                border: none;
+            }
+            body.printing-flow .print-diagram-content svg {
+                width: 100% !important;
+                height: auto !important;
+                max-width: 100% !important;
+            }
+            body.printing-flow .print-flow-root a {
+                color: #000 !important;
+                text-decoration: none !important;
+            }
+            body.printing-flow .print-sidebar-content .scroll-indicator,
+            body.printing-flow .print-sidebar-content .btn {
+                display: none !important;
+            }
+            body.printing-flow .print-sidebar-content .scrollable-section { max-height: none !important; }
+            body.printing-flow .print-sidebar-content .scrollable-section-content {
+                overflow: visible !important;
+                padding-right: 0;
+            }
+            body.printing-flow .print-sidebar-content .flow-sidebar {
+                width: 100%;
+                border-right: 0;
+                padding-right: 0;
+            }
+        }
     </style>
 </head>
 <body>
@@ -310,10 +454,110 @@ class FlowPanel {
                 }
             });
         }
+        function initFloatingControlsDrag() {
+            const controlsList = document.querySelectorAll('.floating-controls');
+            controlsList.forEach((controls) => {
+                if (controls.dataset.draggableInitialized === 'true') {
+                    return;
+                }
+
+                const wrapper = controls.closest('.flow-diagram-wrapper');
+                const handle = controls.querySelector('.drag-handle');
+                if (!wrapper || !handle) {
+                    return;
+                }
+
+                controls.dataset.draggableInitialized = 'true';
+                const dragState = {
+                    active: false,
+                    pointerId: null,
+                    offsetX: 0,
+                    offsetY: 0
+                };
+
+                handle.addEventListener('pointerdown', (event) => {
+                    dragState.active = true;
+                    dragState.pointerId = event.pointerId;
+
+                    const controlsRect = controls.getBoundingClientRect();
+                    dragState.offsetX = event.clientX - controlsRect.left;
+                    dragState.offsetY = event.clientY - controlsRect.top;
+
+                    controls.style.right = 'auto';
+                    controls.style.bottom = 'auto';
+                    controls.classList.add('dragging');
+                    handle.setPointerCapture(event.pointerId);
+                    event.preventDefault();
+                });
+
+                handle.addEventListener('pointermove', (event) => {
+                    if (!dragState.active || event.pointerId !== dragState.pointerId) {
+                        return;
+                    }
+
+                    const wrapperRect = wrapper.getBoundingClientRect();
+                    const maxLeft = Math.max(0, wrapperRect.width - controls.offsetWidth);
+                    const maxTop = Math.max(0, wrapperRect.height - controls.offsetHeight);
+
+                    let nextLeft = event.clientX - wrapperRect.left - dragState.offsetX;
+                    let nextTop = event.clientY - wrapperRect.top - dragState.offsetY;
+
+                    nextLeft = Math.min(Math.max(0, nextLeft), maxLeft);
+                    nextTop = Math.min(Math.max(0, nextTop), maxTop);
+
+                    controls.style.left = nextLeft + 'px';
+                    controls.style.top = nextTop + 'px';
+                });
+
+                const stopDrag = (event) => {
+                    if (!dragState.active || event.pointerId !== dragState.pointerId) {
+                        return;
+                    }
+
+                    dragState.active = false;
+                    controls.classList.remove('dragging');
+                    handle.releasePointerCapture(event.pointerId);
+                };
+
+                handle.addEventListener('pointerup', stopDrag);
+                handle.addEventListener('pointercancel', stopDrag);
+            });
+        }
+        function initScrollableSections() {
+            const sections = document.querySelectorAll('.scrollable-section');
+            sections.forEach((section) => {
+                if (section.dataset.scrollableInitialized === 'true') {
+                    return;
+                }
+
+                const content = section.querySelector('.scrollable-section-content');
+                if (!content) {
+                    return;
+                }
+
+                section.dataset.scrollableInitialized = 'true';
+
+                const updateIndicators = () => {
+                    const maxScroll = Math.max(0, content.scrollHeight - content.clientHeight);
+                    const canScrollUp = content.scrollTop > 2;
+                    const canScrollDown = content.scrollTop < maxScroll - 2;
+
+                    section.classList.toggle('can-scroll-up', canScrollUp);
+                    section.classList.toggle('can-scroll-down', canScrollDown);
+                };
+
+                content.addEventListener('scroll', updateIndicators);
+                window.addEventListener('resize', updateIndicators);
+                requestAnimationFrame(updateIndicators);
+            });
+        }
+        window.addEventListener('load', initFloatingControlsDrag);
+        window.addEventListener('load', initScrollableSections);
     </script>
     ${Object.entries(flowsToShow).map(([title, steps]) => {
         // Sort steps by step number
         const sortedSteps = [...steps].sort((a, b) => (a.step || 0) - (b.step || 0));
+        const flowTests = Array.isArray(this._flows.tests?.[title]) ? this._flows.tests?.[title] : [];
         
         let mermaidCode = 'graph TD\n';
         
@@ -321,6 +565,9 @@ class FlowPanel {
         const stepsByNumber: { [key: number]: any[] } = {};
         const fileList = new Set<string>();
         const helperList = new Set<string>();
+        const stepNodeIdsByName: { [key: string]: string[] } = {};
+        const stepNodeIdsByNumber: { [key: number]: string[] } = {};
+        const testNodeIdsByStepName: { [key: string]: string[] } = {};
 
         sortedSteps.forEach(s => {
             const num = s.step || 0;
@@ -346,6 +593,14 @@ class FlowPanel {
             const escapedLabel = `${label}${fileIndicator}`.replace(/"/g, '&quot;');
             const safeId = step.functionName.replace(/[^a-zA-Z0-9_]/g, '_');
             const nodeId = `Node_${safeId}_${index}`;
+            const normalizedStepName = nodeName.trim().toLowerCase();
+            const stepNumber = typeof step.step === 'number' ? step.step : parseInt(`${step.step || ''}`, 10);
+            if (!stepNodeIdsByName[normalizedStepName]) stepNodeIdsByName[normalizedStepName] = [];
+            stepNodeIdsByName[normalizedStepName].push(nodeId);
+            if (!Number.isNaN(stepNumber)) {
+                if (!stepNodeIdsByNumber[stepNumber]) stepNodeIdsByNumber[stepNumber] = [];
+                stepNodeIdsByNumber[stepNumber].push(nodeId);
+            }
             
             mermaidCode += `  ${nodeId}["${escapedLabel}"]\n`;
             if (step.line && step.uri) {
@@ -383,13 +638,43 @@ class FlowPanel {
             }
         }
 
+        flowTests.forEach((test: any, testIdx: number) => {
+            const normalizedTestName = (test.name || '').trim().toLowerCase();
+            const normalizedTestStepName = typeof test.step === 'string' ? test.step.trim().toLowerCase() : '';
+            const testStepNumber = typeof test.step === 'number' ? test.step : parseInt(`${test.step || ''}`, 10);
+            const safeTestIdBase = (test.functionName || `${title}_test_${testIdx}`).replace(/[^a-zA-Z0-9_]/g, '_');
+            const testNodeId = `Test_${safeTestIdBase}_${testIdx}`;
+            const testTypeLabel = test.testType ? `[${test.testType}] ` : '';
+            const testFrameworkLabel = test.framework ? ` (${test.framework})` : '';
+            const testLabel = `${testTypeLabel}${test.name || 'Flow Test'}${testFrameworkLabel}`.replace(/"/g, '&quot;');
+
+            mermaidCode += `  ${testNodeId}(["🧪 ${testLabel}"])\n`;
+            mermaidCode += `  style ${testNodeId} fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px\n`;
+
+            const matchedStepNodeIds = !Number.isNaN(testStepNumber)
+                ? (stepNodeIdsByNumber[testStepNumber] || [])
+                : (normalizedTestStepName ? (stepNodeIdsByName[normalizedTestStepName] || []) : []);
+            if (matchedStepNodeIds.length > 0) {
+                matchedStepNodeIds.forEach((stepNodeId) => {
+                    mermaidCode += `  ${stepNodeId} -. verifies .-> ${testNodeId}\n`;
+                });
+                const relationKey = normalizedTestStepName || normalizedTestName;
+                testNodeIdsByStepName[relationKey] = [
+                    ...(testNodeIdsByStepName[relationKey] || []),
+                    testNodeId
+                ];
+            }
+        });
+
         const stepsList = sortedSteps.map((s, idx) => {
             const safeNodeIdPart = s.functionName.replace(/[^a-zA-Z0-9_]/g, '_');
             const nodeId = `Node_${safeNodeIdPart}_${idx}`;
             
             // Generate highlight handlers for all helpers in this step
             const helperNodeIds = (s.helpers || []).map((h, hIdx) => `Helper_${h.replace(/[^a-zA-Z0-9_]/g, '_')}_${idx}_${hIdx}`);
-            const allNodeIds = [nodeId, ...helperNodeIds];
+            const normalizedStepName = (s.name || s.functionName).trim().toLowerCase();
+            const testNodeIds = testNodeIdsByStepName[normalizedStepName] || [];
+            const allNodeIds = [nodeId, ...helperNodeIds, ...testNodeIds];
             const highlightCall = `[${allNodeIds.map(nid => `'${nid}'`).join(',')}].forEach(nid => highlightNode('mermaid-${title}', nid, true))`;
             const unhighlightCall = `[${allNodeIds.map(nid => `'${nid}'`).join(',')}].forEach(nid => highlightNode('mermaid-${title}', nid, false))`;
 
@@ -423,6 +708,13 @@ class FlowPanel {
             </li>`;
         }).join('');
 
+        const testsListHtml = flowTests.map((test: any, idx: number) => {
+            const safeTestName = (test.name || `Test ${idx + 1}`).replace(/'/g, '&apos;').replace(/"/g, '&quot;');
+            const testTypeLabel = test.testType ? `<strong>${test.testType}</strong> · ` : '';
+            const frameworkLabel = test.framework ? ` <small>(${test.framework})</small>` : '';
+            return `<li>${testTypeLabel}${safeTestName}${frameworkLabel}</li>`;
+        }).join('');
+
         const legendHtml = `
             <div class="legend">
                 <div class="legend-item">
@@ -433,6 +725,10 @@ class FlowPanel {
                     <div class="legend-box helper-step"></div>
                     <span>Helper</span>
                 </div>
+                <div class="legend-item">
+                    <div class="legend-box test-step"></div>
+                    <span>Flow Test</span>
+                </div>
             </div>
         `;
 
@@ -440,28 +736,53 @@ class FlowPanel {
             <div class="flow-container">
                 <div class="header">
                     <h2>Flow: ${title}</h2>
-                    ${!this._selectedFlowTitle ? `<button class="btn" onclick="zoomIn('${title}')">View</button>` : ''}
+                    <div class="header-actions">
+                        ${!this._selectedFlowTitle ? `<button class="btn" onclick="zoomIn('${title}')">View</button>` : ''}
+                        <button class="btn" onclick="printFlow('mermaid-${title}')">Print</button>
+                    </div>
                 </div>
                 <div class="flow-layout">
                     <div class="flow-sidebar">
-                        <section>
+                        <section class="scrollable-section">
                             <h3>Flow Information</h3>
-                            <p><strong>Name:</strong> ${title}</p>
-                            <p><strong>Steps:</strong></p>
-                            <ul>${stepsList}</ul>
+                            <div class="scroll-indicator scroll-indicator-top" aria-hidden="true">▲</div>
+                            <div class="scrollable-section-content">
+                                <p><strong>Name:</strong> ${title}</p>
+                                <p><strong>Steps:</strong></p>
+                                <ul>${stepsList}</ul>
+                            </div>
+                            <div class="scroll-indicator scroll-indicator-bottom" aria-hidden="true">▼</div>
                         </section>
                         ${helperList.size > 0 ? `
-                        <section>
+                        <section class="scrollable-section">
                             <h3>Helpers</h3>
-                            <ul class="helper-list">${helpersListHtml}</ul>
+                            <div class="scroll-indicator scroll-indicator-top" aria-hidden="true">▲</div>
+                            <div class="scrollable-section-content">
+                                <ul class="helper-list">${helpersListHtml}</ul>
+                            </div>
+                            <div class="scroll-indicator scroll-indicator-bottom" aria-hidden="true">▼</div>
                         </section>` : ''}
-                        <section>
+                        ${flowTests.length > 0 ? `
+                        <section class="scrollable-section">
+                            <h3>Tests</h3>
+                            <div class="scroll-indicator scroll-indicator-top" aria-hidden="true">▲</div>
+                            <div class="scrollable-section-content">
+                                <ul class="test-list">${testsListHtml}</ul>
+                            </div>
+                            <div class="scroll-indicator scroll-indicator-bottom" aria-hidden="true">▼</div>
+                        </section>` : ''}
+                        <section class="scrollable-section">
                             <h3>Files</h3>
-                            <ul class="file-list">${filesListHtml}</ul>
+                            <div class="scroll-indicator scroll-indicator-top" aria-hidden="true">▲</div>
+                            <div class="scrollable-section-content">
+                                <ul class="file-list">${filesListHtml}</ul>
+                            </div>
+                            <div class="scroll-indicator scroll-indicator-bottom" aria-hidden="true">▼</div>
                         </section>
                     </div>
                     <div class="flow-diagram-wrapper">
                         <div class="floating-controls">
+                            <div class="drag-handle" title="Drag to move controls">⠿ Move controls</div>
                             <div class="zoom-controls">
                                 <label>Zoom:</label>
                                 <input type="range" min="0.5" max="3" step="0.1" value="1" oninput="updateZoom('mermaid-${title}', this.value)">

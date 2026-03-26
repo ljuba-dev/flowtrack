@@ -44,13 +44,14 @@ function loadConfig(): FlowConfig {
 
 const config = loadConfig();
 const finalPort = config.port || process.env.PORT || 3434;
+const MAX_PORT_RETRIES = 10;
 const parserProfile = resolveFrameworkProfile({
     workspaceRoot,
     configuredFramework: config.framework
 });
 console.log(`[FlowTrack] Parser profile: ${parserProfile}`);
 
-let allFlows: FlowMap = { flows: {}, helpers: {} };
+let allFlows: FlowMap = { flows: {}, helpers: {}, tests: {} };
 let lastUpdate = Date.now();
 
 function isFlowSourceFile(filePath: string): boolean {
@@ -72,7 +73,7 @@ function looksLikeExtensionlessFlowSource(filePath: string): boolean {
 
 async function scanWorkspace() {
     console.log('Scanning workspace for flows...');
-    const flows: FlowMap = { flows: {}, helpers: {} };
+    const flows: FlowMap = { flows: {}, helpers: {}, tests: {} };
     const files: string[] = [];
 
     config.include.forEach(dir => {
@@ -108,6 +109,17 @@ async function scanWorkspace() {
                     for (const name in fileFlows.helpers) {
                         flows.helpers[name] = fileFlows.helpers[name];
                     }
+                    if (fileFlows.tests) {
+                        if (!flows.tests) {
+                            flows.tests = {};
+                        }
+                        for (const flowName in fileFlows.tests) {
+                            if (!flows.tests[flowName]) {
+                                flows.tests[flowName] = [];
+                            }
+                            flows.tests[flowName].push(...fileFlows.tests[flowName]);
+                        }
+                    }
                 }
             } catch (e) {
                 console.error(`Failed to parse ${file}`, e);
@@ -133,7 +145,8 @@ async function scanWorkspace() {
 
     allFlows = flows;
     lastUpdate = Date.now();
-    console.log(`Scan complete. Found ${Object.keys(allFlows.flows).length} flows and ${Object.keys(allFlows.helpers).length} helpers.`);
+    const testsCount = Object.values(allFlows.tests || {}).reduce((sum, tests) => sum + tests.length, 0);
+    console.log(`Scan complete. Found ${Object.keys(allFlows.flows).length} flows, ${Object.keys(allFlows.helpers).length} helpers and ${testsCount} tests.`);
 }
 
 function getAllFiles(dirPath: string, arrayOfFiles: string[] = []): string[] {
@@ -187,8 +200,43 @@ app.get('/', (req: any, res: any) => {
     res.sendFile(path.join(__dirname, 'html', 'index.html'));
 });
 
+function startServerWithPortRetry(startPort: number, maxRetries: number): Promise<number> {
+    return new Promise((resolve, reject) => {
+        let retries = 0;
+
+        const tryStart = (port: number) => {
+            const server = app.listen(port, () => {
+                console.log(`FlowTrack server running at http://localhost:${port}`);
+                resolve(port);
+            });
+
+            server.on('error', (error: any) => {
+                if (error?.code === 'EADDRINUSE') {
+                    const nextPort = port + 1;
+                    if (retries < maxRetries) {
+                        retries += 1;
+                        console.warn(`[FlowTrack] Port ${port} is busy. Trying port ${nextPort}... (${retries}/${maxRetries})`);
+                        tryStart(nextPort);
+                        return;
+                    }
+
+                    console.error(`[FlowTrack] Port ${port} is busy and no more ports are available in retry range.`);
+                    console.error(`[FlowTrack] Failed to start server. Tried ports ${startPort}-${startPort + maxRetries}.`);
+                    reject(new Error(`Could not start FlowTrack server: all ports from ${startPort} to ${startPort + maxRetries} are busy.`));
+                    return;
+                }
+
+                reject(error);
+            });
+        };
+
+        tryStart(startPort);
+    });
+}
+
 scanWorkspace().then(() => {
-    app.listen(finalPort, () => {
-        console.log(`FlowTrack server running at http://localhost:${finalPort}`);
+    startServerWithPortRetry(Number(finalPort), MAX_PORT_RETRIES).catch((error) => {
+        console.error('[FlowTrack] Server startup failed.', error);
+        process.exit(1);
     });
 });

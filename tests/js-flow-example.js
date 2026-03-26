@@ -19,6 +19,21 @@ function handleNewOrder(order) {
     }
 }
 
+@FlowTest('OrderProcessingJS', {
+    type: 'E2E',
+    framework: 'Playwright',
+    description: 'Verifies end-to-end JavaScript order processing path.'
+})
+function orderProcessingJSE2ETest() {}
+
+@FlowTest('OrderProcessingJS', {
+    type: 'Unit',
+    framework: 'Jest',
+    step: 2,
+    description: 'Covers payment step behavior.'
+})
+function paymentStepUnitTest() {}
+
 @Flow('OrderProcessingJS', 'Payment Step', 2)
 @FlowHelper('PaymentProcessor')
 function processPayment(order) {

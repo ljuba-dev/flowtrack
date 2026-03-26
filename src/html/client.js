@@ -7,7 +7,7 @@ mermaid.initialize({
 });
 
 window.currentView = 'all'; // 'all', 'helpers', or specific flow title
-let allFlowsData = { flows: {}, helpers: {} };
+let allFlowsData = { flows: {}, helpers: {}, tests: {} };
 let lastServerUpdate = 0;
 const diagramTransformState = new Map();
 
@@ -35,6 +35,101 @@ function applyDiagramTransform(id) {
     el.style.transform = `translate(${x}px, ${y}px) scale(${state.scale})`;
     el.classList.toggle('pannable', state.scale > 1);
     el.classList.toggle('panning', state.scale > 1 && state.isDragging);
+}
+
+function initFloatingControlsDrag(diagramContainer, controls) {
+    if (!diagramContainer || !controls || controls.dataset.draggableInitialized === 'true') {
+        return;
+    }
+
+    controls.dataset.draggableInitialized = 'true';
+    const handle = controls.querySelector('.drag-handle');
+    if (!handle) {
+        return;
+    }
+
+    const dragState = {
+        active: false,
+        pointerId: null,
+        offsetX: 0,
+        offsetY: 0
+    };
+
+    handle.addEventListener('pointerdown', (event) => {
+        dragState.active = true;
+        dragState.pointerId = event.pointerId;
+
+        const controlsRect = controls.getBoundingClientRect();
+        dragState.offsetX = event.clientX - controlsRect.left;
+        dragState.offsetY = event.clientY - controlsRect.top;
+
+        controls.style.right = 'auto';
+        controls.style.bottom = 'auto';
+        controls.classList.add('dragging');
+        handle.setPointerCapture(event.pointerId);
+        event.preventDefault();
+    });
+
+    handle.addEventListener('pointermove', (event) => {
+        if (!dragState.active || event.pointerId !== dragState.pointerId) {
+            return;
+        }
+
+        const containerRect = diagramContainer.getBoundingClientRect();
+        const maxLeft = Math.max(0, containerRect.width - controls.offsetWidth);
+        const maxTop = Math.max(0, containerRect.height - controls.offsetHeight);
+
+        let nextLeft = event.clientX - containerRect.left - dragState.offsetX;
+        let nextTop = event.clientY - containerRect.top - dragState.offsetY;
+
+        nextLeft = Math.min(Math.max(0, nextLeft), maxLeft);
+        nextTop = Math.min(Math.max(0, nextTop), maxTop);
+
+        controls.style.left = `${nextLeft}px`;
+        controls.style.top = `${nextTop}px`;
+    });
+
+    const stopDrag = (event) => {
+        if (!dragState.active || event.pointerId !== dragState.pointerId) {
+            return;
+        }
+
+        dragState.active = false;
+        controls.classList.remove('dragging');
+        handle.releasePointerCapture(event.pointerId);
+    };
+
+    handle.addEventListener('pointerup', stopDrag);
+    handle.addEventListener('pointercancel', stopDrag);
+}
+
+function initScrollableSections(root = document) {
+    const sections = root.querySelectorAll('.scrollable-section');
+    sections.forEach((section) => {
+        if (section.dataset.scrollableInitialized === 'true') {
+            return;
+        }
+
+        const content = section.querySelector('.scrollable-section-content');
+        if (!content) {
+            return;
+        }
+
+        section.dataset.scrollableInitialized = 'true';
+
+        const updateIndicators = () => {
+            const maxScroll = Math.max(0, content.scrollHeight - content.clientHeight);
+            const canScrollUp = content.scrollTop > 2;
+            const canScrollDown = content.scrollTop < maxScroll - 2;
+
+            section.classList.toggle('can-scroll-up', canScrollUp);
+            section.classList.toggle('can-scroll-down', canScrollDown);
+        };
+
+        content.addEventListener('scroll', updateIndicators);
+        window.addEventListener('resize', updateIndicators);
+        requestAnimationFrame(updateIndicators);
+    });
 }
 
 function attachDiagramPanHandlers(id) {
@@ -102,6 +197,10 @@ window.renderView = function() {
         document.getElementById('nav-helpers').classList.add('active');
         document.getElementById('right-menu').classList.remove('visible');
         renderHelpers(allFlowsData.flows.helpers, allFlowsData.flows.flows);
+    } else if (window.currentView === 'tests') {
+        document.getElementById('nav-tests').classList.add('active');
+        document.getElementById('right-menu').classList.remove('visible');
+        renderTests(allFlowsData.flows.tests, allFlowsData.flows.flows);
     } else {
         document.getElementById('nav-flows').classList.add('active');
         if (window.currentView === 'all') {
@@ -115,6 +214,7 @@ window.renderView = function() {
 
 async function renderFlows(data) {
     const flows = data.flows;
+    const testsByFlow = data.tests || {};
     const container = document.getElementById('flows-container');
     container.innerHTML = '';
     
@@ -136,12 +236,16 @@ async function renderFlows(data) {
 
     const promises = Object.entries(flowsToRender).map(async ([title, steps]) => {
         if (!Array.isArray(steps)) return;
+        const flowTests = Array.isArray(testsByFlow[title]) ? testsByFlow[title] : [];
         const sortedSteps = [...steps].sort((a, b) => (a.step || 0) - (b.step || 0));
         let mermaidCode = 'graph TD\n';
         
         const stepsByNumber = {};
         const fileList = new Set();
         const helperList = new Set();
+        const stepNodeIdsByName = {};
+        const stepNodeIdsByNumber = {};
+        const testNodeIdsByStepName = {};
 
         sortedSteps.forEach(s => {
             const num = s.step || 0;
@@ -162,6 +266,18 @@ async function renderFlows(data) {
             const escapedLabel = `${label}${fileIndicator}`.replace(/"/g, '&quot;');
             const safeId = step.functionName.replace(/[^a-zA-Z0-9_]/g, '_');
             const nodeId = `Node_${safeId}_${index}`;
+            const normalizedStepName = nodeName.trim().toLowerCase();
+            const stepNumber = typeof step.step === 'number' ? step.step : parseInt(`${step.step || ''}`, 10);
+            if (!stepNodeIdsByName[normalizedStepName]) {
+                stepNodeIdsByName[normalizedStepName] = [];
+            }
+            stepNodeIdsByName[normalizedStepName].push(nodeId);
+            if (!Number.isNaN(stepNumber)) {
+                if (!stepNodeIdsByNumber[stepNumber]) {
+                    stepNodeIdsByNumber[stepNumber] = [];
+                }
+                stepNodeIdsByNumber[stepNumber].push(nodeId);
+            }
             
             mermaidCode += `  ${nodeId}["${escapedLabel}"]\n`;
             
@@ -194,6 +310,34 @@ async function renderFlows(data) {
             }
         }
 
+        flowTests.forEach((test, testIdx) => {
+            const normalizedTestName = (test.name || '').trim().toLowerCase();
+            const normalizedTestStepName = typeof test.step === 'string' ? test.step.trim().toLowerCase() : '';
+            const testStepNumber = typeof test.step === 'number' ? test.step : parseInt(`${test.step || ''}`, 10);
+            const safeTestIdBase = (test.functionName || `${title}_test_${testIdx}`).replace(/[^a-zA-Z0-9_]/g, '_');
+            const testNodeId = `Test_${safeTestIdBase}_${testIdx}`;
+            const testTypeLabel = test.testType ? `[${test.testType}] ` : '';
+            const testFrameworkLabel = test.framework ? ` (${test.framework})` : '';
+            const testLabel = `${testTypeLabel}${test.name || 'Flow Test'}${testFrameworkLabel}`.replace(/"/g, '&quot;');
+
+            mermaidCode += `  ${testNodeId}(["🧪 ${testLabel}"])\n`;
+            mermaidCode += `  style ${testNodeId} fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px\n`;
+
+            const matchedStepNodeIds = !Number.isNaN(testStepNumber)
+                ? (stepNodeIdsByNumber[testStepNumber] || [])
+                : (normalizedTestStepName ? (stepNodeIdsByName[normalizedTestStepName] || []) : []);
+            if (matchedStepNodeIds.length > 0) {
+                matchedStepNodeIds.forEach((stepNodeId) => {
+                    mermaidCode += `  ${stepNodeId} -. verifies .-> ${testNodeId}\n`;
+                });
+                const relationKey = normalizedTestStepName || normalizedTestName;
+                testNodeIdsByStepName[relationKey] = [
+                    ...(testNodeIdsByStepName[relationKey] || []),
+                    testNodeId
+                ];
+            }
+        });
+
         const flowDiv = document.createElement('div');
         flowDiv.className = 'flow-container';
         const flowIdBase = 'flow-' + title.replace(/[^a-zA-Z0-9]/g, '-');
@@ -208,7 +352,9 @@ async function renderFlows(data) {
             
             // Generate highlight handlers for all helpers in this step
             const helperNodeIds = (s.helpers || []).map((h, hIdx) => `Helper_${h.replace(/[^a-zA-Z0-9_]/g, '_')}_${idx}_${hIdx}`);
-            const allNodeIds = [nodeId, ...helperNodeIds];
+            const normalizedStepName = (s.name || s.functionName).trim().toLowerCase();
+            const testNodeIds = testNodeIdsByStepName[normalizedStepName] || [];
+            const allNodeIds = [nodeId, ...helperNodeIds, ...testNodeIds];
             const highlightCall = `[${allNodeIds.map(nid => `'${nid}'`).join(',')}].forEach(nid => highlightNode('${id}', nid, true))`;
             const unhighlightCall = `[${allNodeIds.map(nid => `'${nid}'`).join(',')}].forEach(nid => highlightNode('${id}', nid, false))`;
 
@@ -245,6 +391,13 @@ async function renderFlows(data) {
             </li>`;
         }).join('');
 
+        const testsListHtml = flowTests.map((test, idx) => {
+            const safeTestName = (test.name || `Test ${idx + 1}`).replace(/'/g, '&apos;').replace(/"/g, '&quot;');
+            const testTypeLabel = test.testType ? `<strong>${test.testType}</strong> · ` : '';
+            const frameworkLabel = test.framework ? ` <small>(${test.framework})</small>` : '';
+            return `<li>${testTypeLabel}${safeTestName}${frameworkLabel}</li>`;
+        }).join('');
+
         const legendHtml = `
             <div class="legend">
                 <div class="legend-item">
@@ -255,34 +408,60 @@ async function renderFlows(data) {
                     <div class="legend-box helper-step"></div>
                     <span>Helper</span>
                 </div>
+                <div class="legend-item">
+                    <div class="legend-box test-step"></div>
+                    <span>Flow Test</span>
+                </div>
             </div>
         `;
 
         flowDiv.innerHTML = `
             <div class="flow-header" onclick="toggleFlow('${id}-content')">
                 <h2>Flow: ${title}</h2>
-                <div>
+                <div class="header-actions">
                     ${window.currentView === 'all' ? `<button class="btn" onclick="event.stopPropagation(); zoomIn('${safeTitle}')">View only this</button>` : ''}
+                    <button class="btn" onclick="event.stopPropagation(); printFlow('${id}')">Print</button>
                     <span class="toggle-icon">▼</span>
                 </div>
             </div>
             <div id="${id}-content" class="flow-content">
                 <div class="flow-layout">
                     <div class="flow-sidebar">
-                        <section>
+                        <section class="scrollable-section flow-information">
                             <h3>Flow Information</h3>
-                            <p><strong>Name:</strong> ${title}</p>
-                            <p><strong>Steps:</strong></p>
-                            <ul>${stepsList}</ul>
+                            <div class="scroll-indicator scroll-indicator-top" aria-hidden="true">▲</div>
+                            <div class="scrollable-section-content">
+                                <p><strong>Name:</strong> ${title}</p>
+                                <p><strong>Steps:</strong></p>
+                                <ul>${stepsList}</ul>
+                            </div>
+                            <div class="scroll-indicator scroll-indicator-bottom" aria-hidden="true">▼</div>
                         </section>
                         ${helperList.size > 0 ? `
-                        <section>
+                        <section class="scrollable-section">
                             <h3>Helpers</h3>
-                            <ul class="helper-list">${helpersListHtml}</ul>
+                            <div class="scroll-indicator scroll-indicator-top" aria-hidden="true">▲</div>
+                            <div class="scrollable-section-content">
+                                <ul class="helper-list">${helpersListHtml}</ul>
+                            </div>
+                            <div class="scroll-indicator scroll-indicator-bottom" aria-hidden="true">▼</div>
                         </section>` : ''}
-                        <section>
+                        ${flowTests.length > 0 ? `
+                        <section class="scrollable-section">
+                            <h3>Tests</h3>
+                            <div class="scroll-indicator scroll-indicator-top" aria-hidden="true">▲</div>
+                            <div class="scrollable-section-content">
+                                <ul class="test-list">${testsListHtml}</ul>
+                            </div>
+                            <div class="scroll-indicator scroll-indicator-bottom" aria-hidden="true">▼</div>
+                        </section>` : ''}
+                        <section class="scrollable-section">
                             <h3>Files</h3>
-                            <ul class="file-list">${filesListHtml}</ul>
+                            <div class="scroll-indicator scroll-indicator-top" aria-hidden="true">▲</div>
+                            <div class="scrollable-section-content">
+                                <ul class="file-list">${filesListHtml}</ul>
+                            </div>
+                            <div class="scroll-indicator scroll-indicator-bottom" aria-hidden="true">▼</div>
                         </section>
                     </div>
                     <div class="flow-diagram-container">
@@ -290,6 +469,7 @@ async function renderFlows(data) {
                             <pre class="mermaid" id="${id}">${mermaidCode}</pre>
                         </div>
                         <div class="floating-controls">
+                            <div class="drag-handle" title="Drag to move controls">⠿ Move </div>
                             <div class="zoom-controls">
                                 <label>Zoom:</label>
                                 <input type="range" min="0.5" max="3" step="0.1" value="1" oninput="updateZoom('${id}', this.value)">
@@ -302,6 +482,11 @@ async function renderFlows(data) {
             </div>
 `;
         container.appendChild(flowDiv);
+
+        const diagramContainer = flowDiv.querySelector('.flow-diagram-container');
+        const controls = flowDiv.querySelector('.floating-controls');
+        initFloatingControlsDrag(diagramContainer, controls);
+        initScrollableSections(flowDiv);
         
         try {
             const {svg} = await mermaid.render(id + '-svg', mermaidCode);
@@ -443,9 +628,99 @@ function renderHelpers(helpers, flows) {
     container.firstChild.appendChild(grid);
 }
 
+function renderTests(testsByFlow, flows) {
+    const container = document.getElementById('flows-container');
+    container.innerHTML = '<div class="tests-view"><h2>Flow Tests</h2></div>';
+    const root = container.firstChild;
+
+    if (!testsByFlow || Object.keys(testsByFlow).length === 0) {
+        root.innerHTML += '<p>No tests found. Add @FlowTest decorators to your tests.</p>';
+        return;
+    }
+
+    const sections = Object.entries(testsByFlow)
+        .map(([flowName, tests]) => {
+            if (!Array.isArray(tests) || tests.length === 0) {
+                return '';
+            }
+
+            const flowExists = !!(flows && flows[flowName]);
+            const flowLink = flowExists
+                ? '<a href="#" onclick="window.currentView=\'' + flowName.replace(/'/g, "\\'") + '\'; window.renderView(); return false;">Open flow</a>'
+                : '<span class="muted">Flow not currently discovered</span>';
+
+            const testsItems = tests.map((test, index) => {
+                const testName = test.name || ('Test ' + (index + 1));
+                const testType = test.testType || 'Unspecified';
+                const framework = test.framework ? ' · ' + test.framework : '';
+                const step = typeof test.step !== 'undefined' ? '<span class="test-step-badge">Step: ' + test.step + '</span>' : '<span class="test-step-badge unbound">Flow-level</span>';
+                const description = test.description ? '<p class="test-desc">' + test.description + '</p>' : '';
+                return '<li class="test-item">' +
+                    '<div class="test-item-header"><strong>' + testName + '</strong><span class="test-meta">' + testType + framework + '</span></div>' +
+                    '<div class="test-item-subheader">' + step + '</div>' +
+                    description +
+                    '</li>';
+            }).join('');
+
+            return '<section class="test-flow-section">' +
+                '<div class="test-flow-header">' +
+                    '<h3>' + flowName + '</h3>' +
+                    flowLink +
+                '</div>' +
+                '<ul class="test-list-view">' + testsItems + '</ul>' +
+            '</section>';
+        })
+        .filter(Boolean)
+        .join('');
+
+    root.innerHTML += sections || '<p>No tests found. Add @FlowTest decorators to your tests.</p>';
+}
+
 window.zoomIn = (title) => {
     window.currentView = title;
     window.renderView();
+};
+
+window.printFlow = (flowId) => {
+    const flowContainer = document.getElementById(flowId);
+    if (!flowContainer) return;
+
+    const flowRoot = flowContainer.closest('.flow-container');
+    if (!flowRoot) return;
+
+    const flowTitle = flowRoot.querySelector('.flow-header h2')?.textContent || 'Flow Diagram';
+    const diagramSvg = flowRoot.querySelector('.flow-diagram .mermaid svg');
+    const sidebar = flowRoot.querySelector('.flow-sidebar');
+    if (!diagramSvg || !sidebar) return;
+
+    let printRoot = document.getElementById('print-flow-root');
+    if (!printRoot) {
+        printRoot = document.createElement('div');
+        printRoot.id = 'print-flow-root';
+        printRoot.className = 'print-flow-root';
+        document.body.appendChild(printRoot);
+    }
+
+    printRoot.innerHTML = `
+        <section class="print-page print-diagram-page">
+            <h2>${flowTitle}</h2>
+            <div class="print-diagram-content">${diagramSvg.outerHTML}</div>
+        </section>
+        <section class="print-page print-sidebar-page">
+            <h2>Flow Details</h2>
+            <div class="print-sidebar-content">${sidebar.innerHTML}</div>
+        </section>
+    `;
+
+    document.body.classList.add('printing-flow');
+    const cleanupPrintState = () => {
+        document.body.classList.remove('printing-flow');
+        window.removeEventListener('afterprint', cleanupPrintState);
+    };
+
+    window.addEventListener('afterprint', cleanupPrintState);
+    window.print();
+    setTimeout(cleanupPrintState, 1000);
 };
 
 window.toggleFlow = (id) => {

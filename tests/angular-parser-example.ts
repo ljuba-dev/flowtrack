@@ -4,6 +4,21 @@
  */
 
 class UserFacadeService {
+    @FlowTest('AngularUserFlow', {
+        type: 'E2E',
+        framework: 'Playwright',
+        description: 'Covers the complete Angular user initialization flow.'
+    })
+    angularUserFlowE2ETest() {}
+
+    @FlowTest('AngularUserFlow', {
+        type: 'Unit',
+        framework: 'Jest',
+        step: 1,
+        description: 'Validates user loading and mapping behavior.'
+    })
+    loadUserUnitTest() {}
+
     @Flow('AngularUserFlow', 'Load User', 1)
     loadUser(userId: string) {
         const user = this.getUserById(userId);
