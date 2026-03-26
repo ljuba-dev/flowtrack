@@ -9,6 +9,14 @@ function checkWarehouseInventory(productId, quantity) {
     return true; 
 }
 
+@FlowTest('MegaFulfillmentFlow', {
+    type: 'Unit',
+    framework: 'Jest',
+    step: 3,
+    description: 'Covers discount calculation logic.'
+})
+function calculateDiscountsUnitTest() {}
+
 @Flow('MegaFulfillmentFlow', 'Apply Discounts', 3)
 @FlowHelper('discountCalculator', 'Calculates and applies promotional discounts to orders.')
 @FlowHelper('taxCalculator', 'Applies local and international taxes based on destination.')

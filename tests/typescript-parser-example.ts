@@ -7,6 +7,21 @@ interface RegistrationInput {
     password: string;
 }
 
+@FlowTest('TypeScriptRegistrationFlow', {
+    type: 'E2E',
+    framework: 'Playwright',
+    description: 'Covers end-to-end registration scenario.'
+})
+function registrationFlowE2ETest() {}
+
+@FlowTest('TypeScriptRegistrationFlow', {
+    type: 'Unit',
+    framework: 'Jest',
+    step: 2,
+    description: 'Validates registration input normalization.'
+})
+function validateRegistrationUnitTest() {}
+
 @Flow('TypeScriptRegistrationFlow', 'Start Registration', 1)
 function startRegistration(input: RegistrationInput) {
     const validated = validateRegistration(input);

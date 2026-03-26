@@ -8,6 +8,21 @@ function processTransaction(userId, amount) {
     return authorizeCard(userId, amount);
 }
 
+@FlowTest('PaymentProcessingFlow', {
+    type: 'E2E',
+    framework: 'Playwright',
+    description: 'Covers full payment processing flow.'
+})
+function paymentProcessingE2ETest() {}
+
+@FlowTest('PaymentProcessingFlow', {
+    type: 'Unit',
+    framework: 'Jest',
+    step: 2,
+    description: 'Validates card authorization behavior.'
+})
+function authorizeCardUnitTest() {}
+
 /**
  * Step 2: Card Authorization
  */

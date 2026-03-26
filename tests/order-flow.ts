@@ -7,6 +7,29 @@ function handleOrder(order) {
     return checkStock(order);
 }
 
+@FlowTest('OrderProcessing', {
+    type: 'E2E',
+    framework: 'Playwright',
+    description: 'Validates the order processing flow from new order to shipment.'
+})
+function orderProcessingE2ETest() {}
+
+@FlowTest('OrderProcessing', {
+    type: 'Unit',
+    framework: 'Jest',
+    step: 2,
+    description: 'Validates inventory check branching.'
+})
+function checkInventoryUnitTest() {}
+
+@FlowTest('OrderProcessing', {
+    type: 'Unit',
+    framework: 'Jest',
+    step: 2,
+    description: 'Validates inventory check branching 2.'
+})
+function checkInventoryUnitTest1() {}
+
 /**
  * Checks inventory to see if items are available for the order.
  */

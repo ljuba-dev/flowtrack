@@ -13,6 +13,20 @@ export interface FlowInfo {
     uri?: string;
 }
 
+export interface FlowTestInfo {
+    flow: string;
+    name?: string;
+    step?: number | string;
+    description?: string;
+    testType?: string;
+    framework?: string;
+    id?: string;
+    tags?: string[];
+    functionName: string;
+    line?: number;
+    uri?: string;
+}
+
 export interface FlowHelperInfo {
     name: string;
     description?: string;
@@ -24,6 +38,7 @@ export interface FlowHelperInfo {
 export interface FlowMap {
     flows: { [title: string]: FlowInfo[] };
     helpers: { [name: string]: FlowHelperInfo };
+    tests?: { [flow: string]: FlowTestInfo[] };
 }
 
 class FlowVisitor extends BaseVisitor {
@@ -82,14 +97,17 @@ class FlowVisitor extends BaseVisitor {
         const results: any[] = [];
         const flowDecorator = decorators.find((d: any) => d.type === 'Flow');
         const helperDecorators = decorators.filter((d: any) => d.type === 'FlowHelper');
+        const testDecorators = decorators.filter((d: any) => d.type === 'FlowTest');
 
         if (flowDecorator) {
+            const configuredHelpers = Array.isArray(flowDecorator.helpers) ? flowDecorator.helpers : [];
+            const inlineHelpers = helperDecorators.map((d: any) => d.title || functionName);
             const info: FlowInfo = {
                 title: flowDecorator.title,
                 name: flowDecorator.name,
                 step: flowDecorator.step,
                 description: flowDecorator.description || this.cleanDoc(doc),
-                helpers: helperDecorators.map((d: any) => d.title || functionName),
+                helpers: Array.from(new Set([...configuredHelpers, ...inlineHelpers])),
                 functionName: functionName,
                 line: line
             };
@@ -107,6 +125,27 @@ class FlowVisitor extends BaseVisitor {
                 });
             });
         }
+
+        if (testDecorators.length > 0) {
+            testDecorators.forEach((td: any) => {
+                const docDescription = this.cleanDoc(doc);
+                const fallbackName = td.name || functionName;
+                const description = td.description || docDescription || fallbackName;
+                const info: FlowTestInfo = {
+                    flow: td.flow,
+                    name: fallbackName,
+                    step: td.step,
+                    description,
+                    testType: td.testType,
+                    framework: td.framework,
+                    id: td.id,
+                    tags: td.tags,
+                    functionName,
+                    line
+                };
+                results.push({ ...info, type: 'FlowTest' });
+            });
+        }
         
         return results.length > 0 ? results : null;
     }
@@ -119,14 +158,29 @@ class FlowVisitor extends BaseVisitor {
                 title: args.title,
                 name: args.name,
                 step: args.step,
-                description: args.description
+                description: args.description,
+                helpers: args.helpers
             };
-        } else {
+        } else if (ctx.FlowHelperDecorator) {
             const args = ctx.args ? this.visit(ctx.args[0]) : {};
             return {
                 type: 'FlowHelper',
                 title: args.title || args.name, // Support both title and name
                 description: args.description
+            };
+        } else {
+            const args = ctx.args ? this.visit(ctx.args[0]) : {};
+            const options = args.options || {};
+            return {
+                type: 'FlowTest',
+                flow: args.title,
+                name: options.name || args.name,
+                step: options.step,
+                description: options.description,
+                testType: options.type,
+                framework: options.framework,
+                id: options.id,
+                tags: options.tags
             };
         }
     }
@@ -149,14 +203,20 @@ class FlowVisitor extends BaseVisitor {
         
         if (values.length === 2) {
             if (typeof values[1] === 'object') {
-                result = { ...result, ...values[1] };
+                result.options = values[1];
             } else {
                 result.description = values[1];
             }
         } else if (values.length === 3) {
-            // title, name, step
-            result.name = values[1];
-            result.step = values[2];
+            if (typeof values[2] === 'object') {
+                // title, name, options (used by @FlowTest)
+                result.name = values[1];
+                result.options = values[2];
+            } else {
+                // title, name, step
+                result.name = values[1];
+                result.step = values[2];
+            }
         } else if (values.length >= 4) {
             // title, description, name, step
             result.description = values[1];
@@ -169,19 +229,48 @@ class FlowVisitor extends BaseVisitor {
 
     objectLiteral(ctx: any) {
         const obj: any = {};
-        if (ctx.Identifier) {
-            ctx.Identifier.forEach((id: any, index: number) => {
-                const key = id.image;
-                let val;
-                if (ctx.StringLiteral && ctx.StringLiteral[index]) {
-                    val = ctx.StringLiteral[index].image.replace(/['"]/g, '');
-                } else if (ctx.NumberLiteral && ctx.NumberLiteral[index]) {
-                    val = parseInt(ctx.NumberLiteral[index].image);
+        if (ctx.objectProperty) {
+            ctx.objectProperty.forEach((property: any) => {
+                const parsedProperty = this.visit(property);
+                if (parsedProperty?.key) {
+                    obj[parsedProperty.key] = parsedProperty.value;
                 }
-                obj[key] = val;
             });
         }
         return obj;
+    }
+
+    objectProperty(ctx: any) {
+        const key = ctx.key?.[0]?.image;
+        if (!key) return null;
+
+        if (ctx.stringValue?.[0]) {
+            return {
+                key,
+                value: ctx.stringValue[0].image.replace(/['"]/g, '')
+            };
+        }
+
+        if (ctx.numberValue?.[0]) {
+            return {
+                key,
+                value: parseInt(ctx.numberValue[0].image)
+            };
+        }
+
+        if (ctx.arrayValue?.[0]) {
+            return {
+                key,
+                value: this.visit(ctx.arrayValue[0])
+            };
+        }
+
+        return { key, value: undefined };
+    }
+
+    arrayLiteral(ctx: any) {
+        if (!ctx.StringLiteral) return [];
+        return ctx.StringLiteral.map((s: any) => s.image.replace(/['"]/g, ''));
     }
 
     functionArgs(ctx: any) { return []; }
@@ -210,7 +299,8 @@ export function extractFlows(cst: any, uri?: string): FlowMap {
     const rawResults = (visitor.visit(cst) || []).flat(); // Flatten results as decoratedFunction now returns an array
     const flowMap: FlowMap = {
         flows: {},
-        helpers: {}
+        helpers: {},
+        tests: {}
     };
 
     rawResults.forEach((res: any) => {
@@ -222,6 +312,12 @@ export function extractFlows(cst: any, uri?: string): FlowMap {
         } else if (res.type === 'Helper') {
             res.uri = uri;
             flowMap.helpers[res.name] = res;
+        } else if (res.type === 'FlowTest') {
+            res.uri = uri;
+            const flowName = res.flow || 'UnknownFlow';
+            if (!flowMap.tests) flowMap.tests = {};
+            if (!flowMap.tests[flowName]) flowMap.tests[flowName] = [];
+            flowMap.tests[flowName].push(res);
         }
     });
     

@@ -38,4 +38,11 @@ function handleOrderRequest(req, res) {
     return res.status(200).json(result);
 }
 
+@FlowTest('MegaFulfillmentFlow', {
+    type: 'E2E',
+    framework: 'Playwright',
+    description: 'Validates mega fulfillment flow from request to finalize.'
+})
+function megaFulfillmentE2ETest() {}
+
 export { handleOrderRequest };

@@ -8,6 +8,21 @@ function initiateLogin(email, password) {
     return validateCredentials(email, password);
 }
 
+@FlowTest('AuthFlow', {
+    type: 'E2E',
+    framework: 'Playwright',
+    description: 'Validates the entire authentication flow behavior.'
+})
+function authFlowE2ETest() {}
+
+@FlowTest('AuthFlow', {
+    type: 'Unit',
+    framework: 'Jest',
+    step: 2,
+    description: 'Covers credential validation decision logic.'
+})
+function validateCredentialsUnitTest() {}
+
 /**
  * Validates the provided email and password against the database.
  */

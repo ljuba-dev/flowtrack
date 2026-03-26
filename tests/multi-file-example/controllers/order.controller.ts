@@ -5,3 +5,10 @@ async function handleNewOrder(order) {
         notifyUser(result.orderId);
     }
 }
+
+@FlowTest('OrderProcessing', {
+    type: 'E2E',
+    framework: 'Playwright',
+    description: 'Validates multi-file order processing journey.'
+})
+function orderProcessingMultiFileE2ETest() {}

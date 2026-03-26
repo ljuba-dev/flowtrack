@@ -4,6 +4,7 @@ import { createToken, Lexer, CstParser } from 'chevrotain';
 const WhiteSpace = createToken({ name: 'WhiteSpace', pattern: /\s+/, group: Lexer.SKIPPED });
 const Comment = createToken({ name: 'Comment', pattern: /\/\*\*[\s\S]*?\*\/|\/\/.*/ });
 const FlowHelperDecorator = createToken({ name: 'FlowHelperDecorator', pattern: /@FlowHelper/ });
+const FlowTestDecorator = createToken({ name: 'FlowTestDecorator', pattern: /@FlowTest/ });
 const FlowDecorator = createToken({ name: 'FlowDecorator', pattern: /@Flow/ });
 const LRound = createToken({ name: 'LRound', pattern: /\(/ });
 const RRound = createToken({ name: 'RRound', pattern: /\)/ });
@@ -40,6 +41,7 @@ const allTokens = [
   WhiteSpace,
   Comment,
   FlowHelperDecorator,
+  FlowTestDecorator,
   FlowDecorator,
   LRound,
   RRound,
@@ -84,9 +86,9 @@ class FlowParser extends CstParser {
   public program = this.RULE('program', () => {
     this.MANY(() => {
       this.OR([
-        { GATE: () => this.LA(1).tokenType === ExportKW || this.LA(1).tokenType === ClassKW || (this.LA(1).tokenType === FlowDecorator && this.isClassNext()) || (this.LA(1).tokenType === FlowHelperDecorator && this.isClassNext()),
+        { GATE: () => this.LA(1).tokenType === ExportKW || this.LA(1).tokenType === ClassKW || (this.LA(1).tokenType === FlowDecorator && this.isClassNext()) || (this.LA(1).tokenType === FlowHelperDecorator && this.isClassNext()) || (this.LA(1).tokenType === FlowTestDecorator && this.isClassNext()),
           ALT: () => this.SUBRULE(this.classDeclaration) },
-        { GATE: () => this.LA(1).tokenType === FunctionKW || this.LA(1).tokenType === Async || this.LA(1).tokenType === FlowDecorator || this.LA(1).tokenType === FlowHelperDecorator || (this.LA(1).tokenType === Comment && (this.LA(2).tokenType === FlowDecorator || this.LA(2).tokenType === FlowHelperDecorator || this.LA(2).tokenType === FunctionKW || this.LA(2).tokenType === Async)),
+        { GATE: () => this.LA(1).tokenType === FunctionKW || this.LA(1).tokenType === Async || this.LA(1).tokenType === FlowDecorator || this.LA(1).tokenType === FlowHelperDecorator || this.LA(1).tokenType === FlowTestDecorator || (this.LA(1).tokenType === Comment && (this.LA(2).tokenType === FlowDecorator || this.LA(2).tokenType === FlowHelperDecorator || this.LA(2).tokenType === FlowTestDecorator || this.LA(2).tokenType === FunctionKW || this.LA(2).tokenType === Async)),
           ALT: () => this.SUBRULE(this.decoratedFunction) },
         { ALT: () => this.CONSUME(Comment) },
         { ALT: () => this.CONSUME(ExportKW) },
@@ -144,7 +146,7 @@ class FlowParser extends CstParser {
     this.CONSUME(LCurly);
     this.MANY2(() => {
         this.OR1([
-            { GATE: () => (this.LA(1).tokenType === Identifier && this.LA(2).tokenType === LRound) || this.LA(1).tokenType === FlowDecorator || this.LA(1).tokenType === FlowHelperDecorator || this.LA(1).tokenType === PublicKW || this.LA(1).tokenType === PrivateKW || this.LA(1).tokenType === ProtectedKW || this.LA(1).tokenType === StaticKW || this.LA(1).tokenType === ReadonlyKW || this.LA(1).tokenType === Async || (this.LA(1).tokenType === Comment && (this.LA(2).tokenType === FlowDecorator || this.LA(2).tokenType === FlowHelperDecorator)),
+            { GATE: () => (this.LA(1).tokenType === Identifier && this.LA(2).tokenType === LRound) || this.LA(1).tokenType === FlowDecorator || this.LA(1).tokenType === FlowHelperDecorator || this.LA(1).tokenType === FlowTestDecorator || this.LA(1).tokenType === PublicKW || this.LA(1).tokenType === PrivateKW || this.LA(1).tokenType === ProtectedKW || this.LA(1).tokenType === StaticKW || this.LA(1).tokenType === ReadonlyKW || this.LA(1).tokenType === Async || (this.LA(1).tokenType === Comment && (this.LA(2).tokenType === FlowDecorator || this.LA(2).tokenType === FlowHelperDecorator || this.LA(2).tokenType === FlowTestDecorator)),
               ALT: () => this.SUBRULE(this.classMethod) },
             { GATE: () => this.LA(1).tokenType === Identifier && this.LA(2).tokenType !== LRound,
               ALT: () => this.SUBRULE(this.classProperty) },
@@ -165,6 +167,7 @@ class FlowParser extends CstParser {
             { ALT: () => this.CONSUME1(GreaterThan) },
             { ALT: () => this.CONSUME(FlowDecorator) },
             { ALT: () => this.CONSUME(FlowHelperDecorator) },
+            { ALT: () => this.CONSUME(FlowTestDecorator) },
             { ALT: () => this.CONSUME(DecoratorToken) },
             { ALT: () => this.CONSUME(PublicKW) },
             { ALT: () => this.CONSUME(PrivateKW) },
@@ -331,6 +334,10 @@ class FlowParser extends CstParser {
         { ALT: () => {
             this.CONSUME(FlowHelperDecorator);
             this.OPTION1(() => this.SUBRULE1(this.decoratorArgs, { LABEL: 'args' }));
+        }},
+        { ALT: () => {
+            this.CONSUME(FlowTestDecorator);
+            this.OPTION2(() => this.SUBRULE2(this.decoratorArgs, { LABEL: 'args' }));
         }}
     ]);
   });
@@ -370,16 +377,31 @@ class FlowParser extends CstParser {
     this.MANY_SEP({
         SEP: Comma,
         DEF: () => {
-            this.CONSUME(Identifier);
-            this.CONSUME(Colon);
-            this.OR([
-                { ALT: () => this.CONSUME(StringLiteral) },
-                { ALT: () => this.CONSUME(NumberLiteral) },
-                // simplified for now
-            ]);
+            this.SUBRULE(this.objectProperty);
         }
     });
     this.CONSUME(RCurly);
+  });
+
+  private objectProperty = this.RULE('objectProperty', () => {
+    this.CONSUME(Identifier, { LABEL: 'key' });
+    this.CONSUME(Colon);
+    this.OR([
+      { ALT: () => this.CONSUME(StringLiteral, { LABEL: 'stringValue' }) },
+      { ALT: () => this.CONSUME(NumberLiteral, { LABEL: 'numberValue' }) },
+      { ALT: () => this.SUBRULE(this.arrayLiteral, { LABEL: 'arrayValue' }) },
+    ]);
+  });
+
+  private arrayLiteral = this.RULE('arrayLiteral', () => {
+    this.CONSUME(LSquare);
+    this.MANY_SEP({
+      SEP: Comma,
+      DEF: () => {
+        this.CONSUME(StringLiteral);
+      }
+    });
+    this.CONSUME(RSquare);
   });
 
   private functionArgs = this.RULE('functionArgs', () => {
@@ -434,6 +456,7 @@ class FlowParser extends CstParser {
                         { ALT: () => this.CONSUME(FunctionKW) },
                         { ALT: () => this.CONSUME(FlowDecorator) },
                         { ALT: () => this.CONSUME(FlowHelperDecorator) },
+                        { ALT: () => this.CONSUME(FlowTestDecorator) },
                         { ALT: () => this.CONSUME(DecoratorToken) },
                         { ALT: () => this.CONSUME(LessThan) },
                         { ALT: () => this.CONSUME(GreaterThan) },

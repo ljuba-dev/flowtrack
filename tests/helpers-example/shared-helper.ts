@@ -1,7 +1,7 @@
 /**
  * Common validation utility used across different flows.
  */
-@FlowHelper('ValidateInput', 'Validates that the input data is correctly formatted.')
+@FlowHelper('api.get', 'Fetches data from backend services.')
 function validateInput(data) {
     if (!data || typeof data !== 'object') {
         throw new Error('Invalid input');
@@ -12,7 +12,7 @@ function validateInput(data) {
 /**
  * Common logging utility.
  */
-@FlowHelper('AuditLogger', 'Logs important events to the audit database.')
+@FlowHelper('audit.log', 'Logs important events to the audit database.')
 function logAuditEvent(event, userId) {
     console.log(`[AUDIT] User ${userId} performed ${event}`);
 }

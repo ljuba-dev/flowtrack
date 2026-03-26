@@ -5,6 +5,21 @@
 
 type CheckoutItem = { id: string; price: number };
 
+@FlowTest('ReactCheckoutFlow', {
+    type: 'E2E',
+    framework: 'Playwright',
+    description: 'Checks full checkout flow behavior in React scenario.'
+})
+const reactCheckoutE2ETest = () => {};
+
+@FlowTest('ReactCheckoutFlow', {
+    type: 'Unit',
+    framework: 'Jest',
+    step: 2,
+    description: 'Validates item normalization rules.'
+})
+const normalizeItemsUnitTest = () => {};
+
 @Flow('ReactCheckoutFlow', 'Prepare Checkout', 1)
 const prepareCheckout = (items: CheckoutItem[]) => {
     const normalized = normalizeItems(items);

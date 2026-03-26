@@ -6,12 +6,27 @@ import { UserDto } from '../interfaces/user.dto.interface';
 import { SuccessDto } from '../interfaces/success.dto.interface';
 import { UserInvite } from '../interfaces/user-invite.interface';
 import { API_ROUTES, UserFieldEnum } from '../shared/variables';
-import { Flow, FlowHelper } from '@flowtrack-ljuba/core';
+import { Flow, FlowHelper, FlowTest } from '@flowtrack-ljuba/core';
 @Injectable({
   providedIn: 'root',
 })
 export class UserService {
   constructor(private apiService: ApiService) {}
+
+  @FlowTest('user.get-by-id', {
+    type: 'Unit',
+    framework: 'Jest',
+    step: 1,
+    description: 'Covers user lookup endpoint mapping.'
+  })
+  getUserByIdUnitTest() {}
+
+  @FlowTest('user.get-all-users', {
+    type: 'E2E',
+    framework: 'Playwright',
+    description: 'Covers end-to-end list users behavior.'
+  })
+  getAllUsersE2ETest() {}
 
   /**
    * Get a user by ID

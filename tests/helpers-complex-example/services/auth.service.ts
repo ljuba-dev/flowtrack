@@ -7,6 +7,21 @@ function requestReset(email) {
     return sendResetEmail(email);
 }
 
+@FlowTest('PasswordResetFlow', {
+    type: 'E2E',
+    framework: 'Playwright',
+    description: 'Covers the full password reset flow.'
+})
+function passwordResetE2ETest() {}
+
+@FlowTest('PasswordResetFlow', {
+    type: 'Unit',
+    framework: 'Jest',
+    step: 2,
+    description: 'Validates reset email dispatch behavior.'
+})
+function sendResetEmailUnitTest() {}
+
 /**
  * Step 2: Send Email
  */
@@ -18,3 +33,4 @@ function sendResetEmail(email) {
 
 @FlowHelper('AuditLogger')
 function auditLog(action, email, data) {}
+
