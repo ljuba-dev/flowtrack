@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowTrack Browser</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <nav class="top-nav">
+        <div class="nav-brand">FlowTrack Browser</div>
+        <div class="nav-links">
+            <a href="#" class="nav-item" id="nav-flows" onclick="window.currentView='all'; window.renderView(); return false;">Flows</a>
+            <a href="#" class="nav-item" id="nav-helpers" onclick="window.currentView='helpers'; window.renderView(); return false;">Helpers</a>
+        </div>
+    </nav>
+
+    <div id="main-content">
+        <div id="flows-container">
+            <div class="loading">Loading flows...</div>
+        </div>
+        <div id="right-menu" class="right-menu">
+            <div class="menu-header">
+                <span>Flows List</span>
+                <button class="btn btn-sm" onclick="toggleAllAccordions()" title="Toggle All">
+                    <i class="fas fa-eye"></i>
+                </button>
+            </div>
+            <ul id="menu-items"></ul>
+        </div>
+    </div>
+
+    <script type="module" src="/client.js"></script>
+</body>
+</html>

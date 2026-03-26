@@ -1,0 +1,87 @@
+{
+  "name": "@flowtrack-ljuba/core",
+  "version": "1.0.11",
+  "license": "MIT",
+  "description": "Visualize your code execution flows with ease.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ljuba-dev/flowtrack.git"
+  },
+  "homepage": "https://github.com/ljuba-dev/flowtrack#readme",
+  "bugs": {
+    "url": "https://github.com/ljuba-dev/flowtrack/issues"
+  },
+  "publisher": "Ljubomir Vasić",
+  "email": "ljubomir.vasic.dev@gmail.com",
+  "displayName": "FlowTrack",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Visualization",
+    "Programming Languages",
+    "Other"
+  ],
+  "keywords": [
+    "flow",
+    "visualization",
+    "mermaid",
+    "typescript",
+    "javascript",
+    "documentation"
+  ],
+  "activationEvents": [],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "flowtrack": "./dist/server.js"
+  },
+  "files": [
+    "dist",
+    "assets",
+    "README.md",
+    "flow.config.js"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "flowtrack.visualize",
+        "title": "Visualize Flow"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "flowtrack.visualize",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "webpack",
+    "watch": "webpack --watch",
+    "package": "webpack --mode production --devtool hidden-source-map",
+    "test-compile": "tsc -p ./",
+    "build": "tsc -p ./ && mkdir -p dist/html && cp -r src/html/* dist/html/ && chmod +x dist/server.js",
+    "serve": "ts-node src/server.ts",
+    "flow": "ts-node src/server.ts"
+  },
+  "dependencies": {
+    "@types/vscode": "^1.110.0",
+    "chevrotain": "^12.0.0",
+    "express": "^5.2.1",
+    "chokidar": "^5.0.0"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.5.0",
+    "mermaid": "^11.13.0",
+    "ts-loader": "^9.5.4",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3",
+    "webpack": "^5.105.4",
+    "webpack-cli": "^7.0.2"
+  }
+}

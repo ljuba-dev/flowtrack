@@ -1,0 +1,138 @@
+import { Injectable } from '@angular/core';
+import { Observable } from 'rxjs';
+import { ApiService } from '../api';
+import { UserUpdateRequest } from '../interfaces/user.update.request.interface';
+import { UserDto } from '../interfaces/user.dto.interface';
+import { SuccessDto } from '../interfaces/success.dto.interface';
+import { UserInvite } from '../interfaces/user-invite.interface';
+import { API_ROUTES, UserFieldEnum } from '../shared/variables';
+import { Flow, FlowHelper } from '@flowtrack-ljuba/core';
+@Injectable({
+  providedIn: 'root',
+})
+export class UserService {
+  constructor(private apiService: ApiService) {}
+
+  /**
+   * Get a user by ID
+   * @param id The user ID
+   * @returns Observable with the user data
+   */
+  @Flow('user.get-by-id')
+  @FlowHelper('getUserById')
+  getUserById(id: string): Observable<SuccessDto<UserDto>> {
+    return this.apiService.get<SuccessDto<UserDto>>(
+      API_ROUTES.USER.GET_BY_ID(id)
+    );
+  }
+
+  /**
+   * Get all users
+   * @returns Observable with an array of users
+   */
+  @Flow('user.get-all-users')
+  getAllUsers(): Observable<SuccessDto<UserDto[]>> {
+    return this.apiService.get<SuccessDto<UserDto[]>>(API_ROUTES.USER.GET_ALL);
+  }
+
+  /**
+   * Update a user's information
+   * @param id The user ID
+   * @param userData The updated user data
+   * @returns Observable with the updated user data
+   */
+  @Flow('user.update-user')
+  updateUser(
+    id: string,
+    userData: UserUpdateRequest
+  ): Observable<SuccessDto<UserDto>> {
+    return this.apiService.put<SuccessDto<UserDto>>(
+      API_ROUTES.USER.UPDATE(id),
+      userData
+    );
+  }
+
+  /**
+   * Delete a user
+   * @param id The user ID
+   * @returns Observable with the response data
+   */
+  @Flow('user.delete-user')
+  deleteUser(id: string): Observable<SuccessDto<any>> {
+    return this.apiService.delete<SuccessDto<any>>(API_ROUTES.USER.DELETE(id));
+  }
+
+  /**
+   * Get the current user's information
+   * @returns Observable with the current user data
+   */
+  @Flow('user.get-current-user')
+  getCurrentUser(): Observable<SuccessDto<UserDto>> {
+    return this.apiService.get<SuccessDto<UserDto>>(API_ROUTES.USER.ME);
+  }
+  /**
+   * Get the current user's information
+   * @returns Observable with the current user data
+   */
+  @Flow('user.get-my-profile')
+  getMyProfile(): Observable<SuccessDto<UserDto>> {
+    return this.apiService.get<SuccessDto<UserDto>>(API_ROUTES.USER.MY_PROFILE);
+  }
+
+  /**
+   * Invite a user to the current home
+   * @param inviteData The invite data containing email and role
+   * @returns Observable with the response data
+   */
+  @Flow('user.invite-user')
+  inviteUser(inviteData: UserInvite): Observable<SuccessDto<any>> {
+    return this.apiService.post<SuccessDto<any>>(
+      API_ROUTES.USER.INVITE,
+      inviteData
+    );
+  }
+
+  /**
+   * Search for users by name or email
+   * @param searchValue The search term
+   * @returns Observable with the search results
+   */
+  @Flow('user.search-users')
+  searchUsers(searchValue: string): Observable<SuccessDto<UserDto[]>> {
+    return this.apiService.get<SuccessDto<UserDto[]>>(
+      API_ROUTES.USER.SEARCH(searchValue)
+    );
+  }
+
+  /**
+   * Update a user's role
+   * @param userId The user ID
+   * @param role The new role
+   * @returns Observable with the response data
+   * @deprecated Use updateUserField with UserFieldEnum.ROLES instead
+   */
+  @Flow('user.update-user-role')
+  updateUserRole(userId: string, role: string): Observable<SuccessDto<any>> {
+    return this.updateUserField(userId, UserFieldEnum.ROLES, role);
+  }
+
+  /**
+   * Update a specific field of a user
+   * @param userId The user ID
+   * @param field The field to update (from UserFieldEnum)
+   * @param data The data to update (string for roles, string[] for user_groups)
+   * @returns Observable with the response data
+   */
+  @Flow('user.update-user-field')
+  @FlowHelper('updateUserField')
+  updateUserField<T>(
+    userId: string,
+    field: UserFieldEnum,
+    data: T
+  ): Observable<SuccessDto<any>> {
+    return this.apiService.patch<SuccessDto<any>>(
+      API_ROUTES.USER.UPDATE_FIELD(userId, field),
+      data
+    );
+  }
+}
