@@ -24,7 +24,7 @@ In large codebases, tracing the path of a request or a business process across m
 
 The primary goal of FlowTrack is to bridge the gap between code and architectural diagrams. By annotating key functions with `@Flow` and `@FlowHelper` decorators, FlowTrack parses your codebase and builds a comprehensive map of how different components interact.
 
-![FlowTrack Browser Overview](assets/overview.png)
+![FlowTrack Browser Overview](https://github.com/ljuba-dev/flowtrack/raw/main/assets/overview.png)
 
 ## Installation
 
@@ -51,22 +51,22 @@ This section will be restored once the extension is released.
 ### Interactive Browser
 The standalone server provides a rich web interface to explore your flows, with auto-reloading and Mermaid.js visualization.
 
-![Flow Details View](assets/flow-details.png)
+![Flow Details View](https://github.com/ljuba-dev/flowtrack/raw/main/assets/flow-details.png)
 
 ### Multi-File Flows
 FlowTrack seamlessly connects steps from different files into a single, cohesive flow diagram.
 
-![Multi-file Flow Example](assets/multi-file-flow.png)
+![Multi-file Flow Example](https://github.com/ljuba-dev/flowtrack/raw/main/assets/multi-file-flow.png)
 
 ### Helper Function Visibility
 FlowTrack highlights helper functions decorated with `@FlowHelper`, making it easier to understand supporting logic used by your main flow steps.
 
-![Flow Helpers View](assets/helpers.png)
+![Flow Helpers View](https://github.com/ljuba-dev/flowtrack/raw/main/assets/helpers.png)
 
 ### Flow With Helpers
 You can also inspect flows together with their helper relationships to get a complete picture of execution and dependencies.
 
-![Flow With Helpers](assets/flow-with-helpers.png)
+![Flow With Helpers](https://github.com/ljuba-dev/flowtrack/raw/main/assets/flow-with-helpers.png)
 
 ## Getting Started
 
